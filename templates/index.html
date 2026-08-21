@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>培训管理系统 - 智能推荐</title>
+    <title>培训管理系统 - AI 智能推荐</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <!-- 顶部导航 -->
     <header class="header">
         <div class="header-inner">
             <div class="logo">
@@ -16,7 +15,7 @@
                     <path d="M6 12v5c3 3 9 3 12 0v-5"/>
                 </svg>
                 <span>智学云</span>
-                <span class="logo-sub">企业培训平台</span>
+                <span class="logo-sub">AI 企业培训平台</span>
             </div>
             <div class="header-stats">
                 <div class="stat-item">
@@ -30,15 +29,19 @@
                 </div>
                 <div class="stat-divider"></div>
                 <div class="stat-item">
-                    <span class="stat-num">5</span>
+                    <span class="stat-num">6</span>
                     <span class="stat-label">推荐算法</span>
+                </div>
+                <div class="stat-divider"></div>
+                <div class="stat-item ai-badge">
+                    <span class="stat-num">AI</span>
+                    <span class="stat-label">智能引擎</span>
                 </div>
             </div>
         </div>
     </header>
 
     <main class="main">
-        <!-- 左侧用户面板 -->
         <aside class="sidebar">
             <div class="panel">
                 <h3 class="panel-title">
@@ -47,7 +50,6 @@
                 </h3>
                 <div class="user-list" id="userList"></div>
             </div>
-
             <div class="panel" id="profilePanel" style="display:none;">
                 <h3 class="panel-title">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>
@@ -57,18 +59,15 @@
             </div>
         </aside>
 
-        <!-- 主内容区 -->
         <section class="content">
-            <!-- 欢迎横幅 -->
             <div class="welcome-banner" id="welcomeBanner">
                 <div class="welcome-text">
                     <h1>👋 你好，请选择一位学员</h1>
-                    <p>体验基于协同过滤、内容推荐和混合算法的智能课程推荐系统</p>
+                    <p>体验 AI 驱动的智能课程推荐：SVD 机器学习、协同过滤、学习路径规划与 AI 助手</p>
                 </div>
-                <div class="welcome-icon">🎯</div>
+                <div class="welcome-icon">🤖</div>
             </div>
 
-            <!-- 用户信息横幅 -->
             <div class="user-banner" id="userBanner" style="display:none;">
                 <div class="user-banner-left">
                     <div class="user-avatar-lg" id="userAvatarLg">张</div>
@@ -93,12 +92,28 @@
                 </div>
             </div>
 
-            <!-- 算法切换 -->
+            <div class="section" id="pathSection" style="display:none;">
+                <div class="section-header">
+                    <h3>
+                        <span class="ai-tag">AI</span>
+                        智能学习路径
+                    </h3>
+                    <span class="section-sub" id="pathDirection"></span>
+                </div>
+                <div class="path-overview" id="pathOverview"></div>
+                <div class="path-stages" id="pathStages"></div>
+            </div>
+
             <div class="algo-tabs" id="algoTabs" style="display:none;">
                 <button class="algo-tab active" data-algo="hybrid">
                     <span class="algo-icon">🔀</span>
-                    <span class="algo-label">混合推荐</span>
-                    <span class="algo-desc">智能融合多算法</span>
+                    <span class="algo-label">AI 混合推荐</span>
+                    <span class="algo-desc">智能融合6算法</span>
+                </button>
+                <button class="algo-tab" data-algo="svd">
+                    <span class="algo-icon">🧠</span>
+                    <span class="algo-label">SVD 机器学习</span>
+                    <span class="algo-desc">隐语义模型</span>
                 </button>
                 <button class="algo-tab" data-algo="user_cf">
                     <span class="algo-icon">👥</span>
@@ -122,7 +137,6 @@
                 </button>
             </div>
 
-            <!-- 推荐区域 -->
             <div class="section" id="recommendSection" style="display:none;">
                 <div class="section-header">
                     <h3 id="sectionTitle">为你推荐</h3>
@@ -131,7 +145,6 @@
                 <div class="course-grid" id="recommendGrid"></div>
             </div>
 
-            <!-- 已学课程 -->
             <div class="section" id="learnedSection" style="display:none;">
                 <div class="section-header">
                     <h3>已学课程</h3>
@@ -140,7 +153,6 @@
                 <div class="course-grid" id="learnedGrid"></div>
             </div>
 
-            <!-- 算法对比 -->
             <div class="section" id="compareSection" style="display:none;">
                 <div class="section-header">
                     <h3>算法效果对比</h3>
@@ -151,7 +163,42 @@
         </section>
     </main>
 
-    <!-- 课程详情弹窗 -->
+    <button class="ai-fab" id="aiFab" onclick="toggleChat()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span class="ai-fab-label">AI 助手</span>
+    </button>
+
+    <div class="chat-panel" id="chatPanel">
+        <div class="chat-header">
+            <div class="chat-header-left">
+                <div class="chat-avatar">🤖</div>
+                <div>
+                    <h4>AI 学习助手</h4>
+                    <span class="chat-status">在线 · 随时为你服务</span>
+                </div>
+            </div>
+            <button class="chat-close" onclick="toggleChat()">×</button>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="chat-msg ai-msg">
+                <div class="chat-msg-avatar">🤖</div>
+                <div class="chat-bubble">你好！我是你的 AI 学习助手 🎓<br>我可以帮你推荐课程、规划学习路径、查询学习进度。<br><br>试试问我：<br>• "推荐什么课程"<br>• "我的学习路径"<br>• "热门课程有哪些"</div>
+            </div>
+        </div>
+        <div class="chat-quick" id="chatQuick">
+            <button onclick="quickAsk('推荐什么课程')">推荐课程</button>
+            <button onclick="quickAsk('我的学习路径')">学习路径</button>
+            <button onclick="quickAsk('热门课程')">热门课程</button>
+            <button onclick="quickAsk('我的学习情况')">学习进度</button>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="chatInput" placeholder="输入你的问题..." onkeydown="if(event.key==='Enter')sendChat()">
+            <button class="chat-send" onclick="sendChat()">发送</button>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="courseModal" onclick="closeModal(event)">
         <div class="modal" onclick="event.stopPropagation()">
             <button class="modal-close" onclick="closeModal()">×</button>
@@ -173,9 +220,7 @@
         </div>
     </div>
 
-    <!-- Toast 提示 -->
     <div class="toast" id="toast"></div>
-
     <script src="/static/app.js"></script>
 </body>
 </html>
