@@ -1,12 +1,14 @@
 """
 培训管理系统 - 智能推荐引擎
 基于 GitHub 开源项目 Surprise / recommender-systems 学习实现
+
 支持算法：
 1. 基于用户的协同过滤 (User-CF)
 2. 基于物品的协同过滤 (Item-CF)
 3. 基于内容的推荐 (Content-Based)
 4. 热门推荐 (Popularity)
 5. 混合推荐 (Hybrid) - 加权融合
+6. SVD 矩阵分解（机器学习隐语义模型）
 """
 
 import math
@@ -24,12 +26,15 @@ class RecommendationEngine:
         self.interactions = interactions
 
         self.user_course_matrix = self._build_matrix()
+
         self.user_learned = defaultdict(set)
         for inter in interactions:
             self.user_learned[inter['user_id']].add(inter['course_id'])
+
         self.course_users = defaultdict(set)
         for inter in interactions:
             self.course_users[inter['course_id']].add(inter['user_id'])
+
         self.course_content_vectors = self._build_content_vectors()
         self.user_preference_vectors = self._build_user_preferences()
         self.item_similarity = self._compute_item_similarity()
@@ -38,6 +43,7 @@ class RecommendationEngine:
         self.svd_params = self._train_svd()
 
     def _build_matrix(self) -> Dict[int, Dict[int, float]]:
+        """构建用户-课程评分矩阵（隐式反馈转评分）"""
         matrix = defaultdict(dict)
         for inter in self.interactions:
             uid = inter['user_id']
@@ -52,6 +58,7 @@ class RecommendationEngine:
         return dict(matrix)
 
     def _build_content_vectors(self) -> Dict[int, Dict[str, float]]:
+        """构建课程内容特征向量（类别+标签+难度）"""
         vectors = {}
         for cid, course in self.courses.items():
             vec = defaultdict(float)
@@ -64,6 +71,7 @@ class RecommendationEngine:
         return vectors
 
     def _build_user_preferences(self) -> Dict[int, Dict[str, float]]:
+        """基于学习历史构建用户偏好向量"""
         prefs = {}
         for uid in self.users:
             pref = defaultdict(float)
@@ -81,6 +89,7 @@ class RecommendationEngine:
 
     @staticmethod
     def _cosine_similarity(vec_a: Dict, vec_b: Dict) -> float:
+        """余弦相似度"""
         common = set(vec_a.keys()) & set(vec_b.keys())
         if not common:
             return 0.0
@@ -92,6 +101,7 @@ class RecommendationEngine:
         return dot / (norm_a * norm_b)
 
     def _compute_item_similarity(self) -> Dict[int, Dict[int, float]]:
+        """计算课程间相似度（Item-CF，带热门惩罚）"""
         sim = defaultdict(dict)
         course_ids = list(self.course_users.keys())
         for i, c1 in enumerate(course_ids):
@@ -125,9 +135,11 @@ class RecommendationEngine:
         return dict(sim)
 
     def course_users_of(self, uid):
+        """获取用户学习的课程集合（辅助方法）"""
         return self.user_learned.get(uid, set())
 
     def _compute_user_similarity(self) -> Dict[int, Dict[int, float]]:
+        """计算用户间相似度（User-CF）"""
         sim = defaultdict(dict)
         user_ids = list(self.user_course_matrix.keys())
         for i, u1 in enumerate(user_ids):
@@ -142,6 +154,7 @@ class RecommendationEngine:
         return dict(sim)
 
     def _compute_popularity(self) -> Dict[int, float]:
+        """计算课程热门度分数"""
         pop = {}
         max_learners = max(
             (len(us) for us in self.course_users.values()), default=1
@@ -164,7 +177,11 @@ class RecommendationEngine:
 
     def _train_svd(self, n_factors: int = 5, n_epochs: int = 120,
                    lr: float = 0.005, reg: float = 0.02) -> dict:
-        """训练 SVD 矩阵分解模型（参考 Surprise 库的 SVD 实现）"""
+        """
+        训练 SVD 矩阵分解模型（参考 Surprise 库的 SVD 实现）
+        r_hat = μ + bu + bi + U_u · V_i
+        使用随机梯度下降优化
+        """
         import random
         random.seed(42)
 
@@ -190,11 +207,13 @@ class RecommendationEngine:
 
         for epoch in range(n_epochs):
             random.shuffle(trainset)
+            total_loss = 0.0
             for uid, cid, r in trainset:
                 pred = global_mean + bu[uid] + bi[cid]
                 for f in range(n_factors):
                     pred += U[uid][f] * V[cid][f]
                 err = r - pred
+                total_loss += err ** 2
 
                 bu[uid] += lr * (err - reg * bu[uid])
                 bi[cid] += lr * (err - reg * bi[cid])
@@ -215,6 +234,7 @@ class RecommendationEngine:
         }
 
     def _svd_predict(self, user_id: int, course_id: int) -> float:
+        """SVD 预测单个用户对单个课程的评分"""
         p = self.svd_params
         pred = p['global_mean']
         if user_id in p['bu']:
@@ -254,6 +274,7 @@ class RecommendationEngine:
         return results
 
     def recommend_user_cf(self, user_id: int, top_n: int = 8) -> List[dict]:
+        """基于用户的协同过滤推荐"""
         learned = self.user_learned.get(user_id, set())
         similar_users = self.user_similarity.get(user_id, {})
         if not similar_users:
@@ -284,6 +305,7 @@ class RecommendationEngine:
         return results[:top_n]
 
     def recommend_item_cf(self, user_id: int, top_n: int = 8) -> List[dict]:
+        """基于物品的协同过滤推荐"""
         learned = self.user_learned.get(user_id, set())
         if not learned:
             return []
@@ -315,6 +337,7 @@ class RecommendationEngine:
         return results[:top_n]
 
     def recommend_content_based(self, user_id: int, top_n: int = 8) -> List[dict]:
+        """基于内容的推荐"""
         learned = self.user_learned.get(user_id, set())
         pref = self.user_preference_vectors.get(user_id, {})
         if not pref:
@@ -350,6 +373,7 @@ class RecommendationEngine:
         return results[:top_n]
 
     def recommend_popular(self, top_n: int = 8) -> List[dict]:
+        """热门推荐"""
         results = []
         for cid, pop in self.course_popularity.items():
             course = self.courses[cid]
@@ -364,6 +388,12 @@ class RecommendationEngine:
         return results[:top_n]
 
     def recommend_hybrid(self, user_id: int, top_n: int = 8) -> List[dict]:
+        """
+        混合推荐（加权融合 + AI 去重判断）
+        正常用户权重：User-CF 0.22 + Item-CF 0.22 + Content 0.18 + Popular 0.10 + SVD 0.28
+        冷启动用户权重：Content 0.35 + Popular 0.45 + SVD 0.20
+        AI 判断：已完成/在学课程硬性过滤，先修课程/难度适配门控
+        """
         learned = self.user_learned.get(user_id, set())
         is_cold_start = len(learned) < 2
 
@@ -407,6 +437,10 @@ class RecommendationEngine:
 
         results = []
         for cid, score in all_scores.items():
+            # AI 五维门控判断
+            should, gate_reason = self.should_recommend(user_id, cid)
+            if not should:
+                continue
             results.append({
                 'course_id': cid,
                 'score': round(score, 3),
@@ -416,10 +450,65 @@ class RecommendationEngine:
         results.sort(key=lambda x: -x['score'])
         return results[:top_n]
 
+    def should_recommend(self, user_id: int, course_id: int) -> tuple:
+        """
+        AI 判断课程是否适合推荐给该学员（五维门控）
+        返回 (should_recommend: bool, reason: str)
+        判断维度：岗位匹配、难度适配、先修课程、同事评分、学习路径
+        """
+        user = self.users.get(user_id, {})
+        course = self.courses.get(course_id, {})
+        learned = self.user_learned.get(user_id, set())
+
+        # 1. 已学课程硬性过滤（最高优先级）
+        if course_id in learned:
+            return False, "已学习"
+
+        position = user.get('position', '')
+        department = user.get('department', '')
+        course_tags = course.get('tags', [])
+        course_cats = course.get('categories', [])
+        difficulty = course.get('difficulty', '初级')
+
+        # 2. 先修课程检查：高级课程需要先完成基础课程
+        if difficulty == '高级':
+            has_prerequisite = False
+            for learned_cid in learned:
+                learned_course = self.courses.get(learned_cid, {})
+                learned_tags = set(learned_course.get('tags', []))
+                if learned_tags & set(course_tags):
+                    has_prerequisite = True
+                    break
+            if not has_prerequisite and len(learned) < 3:
+                return False, "需要先完成基础课程"
+
+        # 3. 难度适配：新学员不推荐高级课程
+        if difficulty == '高级' and len(learned) < 2:
+            return False, "难度过高，建议先学习基础课程"
+
+        # 4. 同事评分门控：同部门学员评分低于3.5不推荐
+        dept_learners = [
+            uid for uid in self.course_users.get(course_id, set())
+            if self.users.get(uid, {}).get('department') == department
+            and uid != user_id
+        ]
+        if dept_learners:
+            dept_ratings = [
+                i.get('rating', 0) for i in self.interactions
+                if i['course_id'] == course_id
+                and i['user_id'] in dept_learners
+                and i.get('rating', 0) > 0
+            ]
+            if dept_ratings and sum(dept_ratings) / len(dept_ratings) < 3.5:
+                return False, "同事评价偏低"
+
+        return True, "通过AI门控"
+
     def _get_course_name(self, cid: int) -> str:
         return self.courses.get(cid, {}).get('name', '未知课程')
 
     def get_user_profile(self, user_id: int) -> dict:
+        """获取用户画像摘要"""
         user = self.users.get(user_id, {})
         learned = self.user_learned.get(user_id, set())
         pref = self.user_preference_vectors.get(user_id, {})
@@ -453,6 +542,7 @@ class RecommendationEngine:
     def record_interaction(self, user_id: int, course_id: int,
                            progress: float = 0, rating: int = 0,
                            behavior_weight: float = 0):
+        """记录用户学习行为并更新模型"""
         existing = None
         for inter in self.interactions:
             if inter['user_id'] == user_id and inter['course_id'] == course_id:
