@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>培训管理系统 - 智能推荐</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <header class="header">
+        <div class="header-inner">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
+                    <path d="M6 12v5c3 3 9 3 12 0v-5"/>
+                </svg>
+                <span>智学云</span>
+                <span class="logo-sub">企业培训平台</span>
+            </div>
+            <div class="header-stats">
+                <div class="stat-item">
+                    <span class="stat-num" id="totalCourses">24</span>
+                    <span class="stat-label">课程</span>
+                </div>
+                <div class="stat-divider"></div>
+                <div class="stat-item">
+                    <span class="stat-num" id="totalUsers">10</span>
+                    <span class="stat-label">学员</span>
+                </div>
+                <div class="stat-divider"></div>
+                <div class="stat-item">
+                    <span class="stat-num">5</span>
+                    <span class="stat-label">推荐算法</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <!-- 左侧用户面板 -->
+        <aside class="sidebar">
+            <div class="panel">
+                <h3 class="panel-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    切换学员视角
+                </h3>
+                <div class="user-list" id="userList"></div>
+            </div>
+
+            <div class="panel" id="profilePanel" style="display:none;">
+                <h3 class="panel-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>
+                    学员画像
+                </h3>
+                <div class="profile-content" id="profileContent"></div>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <section class="content">
+            <!-- 欢迎横幅 -->
+            <div class="welcome-banner" id="welcomeBanner">
+                <div class="welcome-text">
+                    <h1>👋 你好，请选择一位学员</h1>
+                    <p>体验基于协同过滤、内容推荐和混合算法的智能课程推荐系统</p>
+                </div>
+                <div class="welcome-icon">🎯</div>
+            </div>
+
+            <!-- 用户信息横幅 -->
+            <div class="user-banner" id="userBanner" style="display:none;">
+                <div class="user-banner-left">
+                    <div class="user-avatar-lg" id="userAvatarLg">张</div>
+                    <div>
+                        <h2 id="userName">张三</h2>
+                        <p id="userDept">技术研发部 · 后端开发工程师</p>
+                    </div>
+                </div>
+                <div class="user-banner-right">
+                    <div class="mini-stat">
+                        <span class="mini-stat-num" id="learnedCount">0</span>
+                        <span class="mini-stat-label">已学课程</span>
+                    </div>
+                    <div class="mini-stat">
+                        <span class="mini-stat-num" id="totalProgress">0</span>
+                        <span class="mini-stat-label">总学习时长(h)</span>
+                    </div>
+                    <div class="mini-stat" id="coldStartBadge" style="display:none;">
+                        <span class="mini-stat-badge">新用户</span>
+                        <span class="mini-stat-label">冷启动模式</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 算法切换 -->
+            <div class="algo-tabs" id="algoTabs" style="display:none;">
+                <button class="algo-tab active" data-algo="hybrid">
+                    <span class="algo-icon">🔀</span>
+                    <span class="algo-label">混合推荐</span>
+                    <span class="algo-desc">智能融合多算法</span>
+                </button>
+                <button class="algo-tab" data-algo="user_cf">
+                    <span class="algo-icon">👥</span>
+                    <span class="algo-label">用户协同过滤</span>
+                    <span class="algo-desc">相似学员在学</span>
+                </button>
+                <button class="algo-tab" data-algo="item_cf">
+                    <span class="algo-icon">🔗</span>
+                    <span class="algo-label">物品协同过滤</span>
+                    <span class="algo-desc">相似课程推荐</span>
+                </button>
+                <button class="algo-tab" data-algo="content">
+                    <span class="algo-icon">🏷️</span>
+                    <span class="algo-label">内容推荐</span>
+                    <span class="algo-desc">基于兴趣标签</span>
+                </button>
+                <button class="algo-tab" data-algo="popular">
+                    <span class="algo-icon">🔥</span>
+                    <span class="algo-label">热门推荐</span>
+                    <span class="algo-desc">大家都在学</span>
+                </button>
+            </div>
+
+            <!-- 推荐区域 -->
+            <div class="section" id="recommendSection" style="display:none;">
+                <div class="section-header">
+                    <h3 id="sectionTitle">为你推荐</h3>
+                    <span class="section-sub" id="sectionSub"></span>
+                </div>
+                <div class="course-grid" id="recommendGrid"></div>
+            </div>
+
+            <!-- 已学课程 -->
+            <div class="section" id="learnedSection" style="display:none;">
+                <div class="section-header">
+                    <h3>已学课程</h3>
+                    <span class="section-sub">你的学习记录</span>
+                </div>
+                <div class="course-grid" id="learnedGrid"></div>
+            </div>
+
+            <!-- 算法对比 -->
+            <div class="section" id="compareSection" style="display:none;">
+                <div class="section-header">
+                    <h3>算法效果对比</h3>
+                    <button class="btn-compare" onclick="runCompare()">运行对比</button>
+                </div>
+                <div class="compare-grid" id="compareGrid"></div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 课程详情弹窗 -->
+    <div class="modal-overlay" id="courseModal" onclick="closeModal(event)">
+        <div class="modal" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="closeModal()">×</button>
+            <div class="modal-cover" id="modalCover"></div>
+            <div class="modal-body">
+                <h2 id="modalTitle"></h2>
+                <p id="modalDesc"></p>
+                <div class="modal-meta" id="modalMeta"></div>
+                <div class="modal-reason" id="modalReason"></div>
+                <div class="modal-actions">
+                    <button class="btn-primary" id="btnLearn" onclick="startLearning()">开始学习</button>
+                    <button class="btn-secondary" id="btnRate" onclick="showRating()">评价课程</button>
+                </div>
+                <div class="rating-picker" id="ratingPicker" style="display:none;">
+                    <span>点击评分：</span>
+                    <span class="stars" id="stars"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 提示 -->
+    <div class="toast" id="toast"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
