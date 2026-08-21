@@ -1,97 +1,61 @@
-# 培训管理系统 - 智能推荐引擎
+# 培训管理系统 - AI 智能推荐引擎
 
-基于 GitHub 开源推荐系统项目（Surprise、recommender-systems 等）学习实现的企业培训智能推荐功能。
+基于 GitHub 开源项目（Surprise、recommender-systems 等）学习实现的企业培训智能推荐系统。
 
-## 功能特性
+## 核心功能
 
-### 5 种推荐算法
+### 6 种推荐算法
+| 算法 | 说明 |
+|------|------|
+| **AI 混合推荐** | 加权融合 5 种算法，SVD 占 28% 权重 |
+| **SVD 矩阵分解** | 机器学习隐语义模型，梯度下降优化，发现隐式兴趣 |
+| **用户协同过滤** | 余弦相似度找相似学员，加权评分推荐 |
+| **物品协同过滤** | 改进余弦相似度 + 热门惩罚 + 内容相似度混合 |
+| **内容推荐** | 课程分类/标签/难度特征向量 + 用户偏好余弦匹配 |
+| **热门推荐** | 学习人数归一化 × 0.6 + 平均评分 × 0.4 |
 
-| 算法 | 说明 | 适用场景 |
-|------|------|----------|
-| **混合推荐** | 加权融合 User-CF + Item-CF + Content + Popular | 默认推荐，效果最优 |
-| **用户协同过滤 (User-CF)** | 找到兴趣相似的学员，推荐他们学过的课程 | 有一定学习记录的用户 |
-| **物品协同过滤 (Item-CF)** | 基于已学课程，推荐内容相似的课程 | 有明确学习方向的用户 |
-| **基于内容推荐** | 根据课程分类/标签/难度匹配用户偏好 | 兴趣明确的用户 |
-| **热门推荐** | 基于学习人数和评分推荐全局热门课程 | 新用户冷启动 |
-
-### 核心能力
-
+### AI 增强功能
+- **AI 智能推荐理由**：综合岗位匹配、学习历史、同事行为、技能缺口、课程热度等 8 个维度生成个性化推荐解释
+- **AI 学习路径规划**：根据岗位自动生成 4 阶段成长路径，实时追踪进度并给出 AI 建议
+- **AI 学习助手**：对话式交互，支持课程推荐、路径规划、进度查询、热门课程、算法原理等问答
 - **冷启动处理**：新用户自动切换为内容推荐 + 热门推荐策略
-- **隐式反馈建模**：综合学习进度、评分、收藏/分享等行为计算偏好分数
-- **用户画像**：自动从学习历史中提取偏好分类和兴趣标签
-- **实时更新**：记录学习行为后推荐结果即时刷新
-- **推荐可解释**：每个推荐都附带理由（"相似学员在学"、"与已学课程相似"等）
-- **算法对比**：一键对比 5 种算法的推荐结果差异
-- **热门惩罚**：Item-CF 中对热门课程/活跃用户做惩罚，提升推荐多样性
+- **实时更新**：学习/评分行为触发模型即时重训练
 
 ## 技术栈
-
-- **后端**：Python 3 + Flask
-- **前端**：原生 HTML/CSS/JavaScript（零依赖）
-- **算法**：纯 Python 实现（余弦相似度、改进余弦相似度、min-max 归一化）
+- 后端：Python 3 + Flask
+- 推荐算法：纯 Python 实现（SVD 梯度下降、协同过滤、余弦相似度）
+- 前端：原生 HTML/CSS/JS 单页应用
+- 数据：24 门课程、10 位学员、50+ 条学习行为
 
 ## 快速开始
 
 ```bash
-# 安装依赖
-pip install flask
-
-# 启动服务
+pip install -r requirements.txt
 python app.py
-
 # 访问 http://localhost:5000
-```
-
-## 项目结构
-
-```
-training-recommender/
-├── app.py              # Flask 应用 & REST API
-├── recommender.py      # 推荐引擎核心（5种算法实现）
-├── data.py             # 模拟数据（24门课程、10位学员、学习行为）
-├── templates/
-│   └── index.html      # 前端页面
-└── static/
-    ├── style.css       # 样式
-    └── app.js          # 前端交互逻辑
 ```
 
 ## API 接口
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| `/api/users` | GET | 获取所有学员 |
-| `/api/courses` | GET | 获取所有课程 |
-| `/api/recommend/<user_id>` | GET | 获取推荐结果（参数: algorithm, top_n） |
+| `/api/recommend/<user_id>` | GET | 获取推荐结果（?algorithm=hybrid/svd/user_cf/item_cf/content/popular） |
 | `/api/profile/<user_id>` | GET | 获取学员画像和已学课程 |
-| `/api/interact` | POST | 记录学习行为（实时更新推荐） |
-| `/api/compare/<user_id>` | GET | 对比所有算法推荐结果 |
+| `/api/interact` | POST | 记录学习行为，实时更新推荐 |
+| `/api/compare/<user_id>` | GET | 6 种算法推荐结果对比 |
+| `/api/learning-path/<user_id>` | GET | AI 学习路径规划 |
+| `/api/chat` | POST | AI 学习助手对话 |
 
-## 算法原理
+## 项目结构
 
-### 1. 协同过滤 (Collaborative Filtering)
-
-参考 GitHub 开源项目 Surprise 的协同过滤思想：
-
-- **User-CF**：计算用户间余弦相似度，取 Top-K 相似用户的评分加权平均
-- **Item-CF**：计算课程间相似度（改进余弦相似度 + 热门惩罚），基于用户已学课程推荐
-
-### 2. 基于内容推荐 (Content-Based)
-
-- 课程特征：分类（one-hot）+ 标签（权重 0.8）+ 难度（one-hot）
-- 用户偏好：从学习历史加权聚合，按行为强度归一化
-- 相似度：用户偏好向量与课程特征向量的余弦相似度
-
-### 3. 混合推荐 (Hybrid)
-
-对各算法分数做 min-max 归一化后加权融合：
-- 正常用户：User-CF 30% + Item-CF 30% + Content 25% + Popular 15%
-- 冷启动用户：Content 40% + Popular 60%
-
-## 学习来源
-
-本项目参考了以下 GitHub 开源项目：
-
-- [NicolasHug/Surprise](https://github.com/NicolasHug/Surprise) - Python 推荐系统库
-- [zhistaredu/StarTraining](https://github.com/zhistaredu/StarTraining) - 企业培训系统
-- [roncoo/roncoo-education](https://github.com/roncoo/roncoo-education) - 在线教育系统
+```
+├── app.py              # Flask 应用与 REST API
+├── recommender.py      # 推荐引擎（6 种算法，含 SVD 机器学习）
+├── ai_engine.py        # AI 增强引擎（推荐理由、学习路径、对话助手）
+├── data.py             # 模拟数据
+├── templates/index.html
+├── static/style.css
+├── static/app.js
+├── requirements.txt
+└── README.md
+```
