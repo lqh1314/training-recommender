@@ -1,7 +1,6 @@
 """
 培训管理系统 - 智能推荐引擎
 基于 GitHub 开源项目 Surprise / recommender-systems 学习实现
-
 支持算法：
 1. 基于用户的协同过滤 (User-CF)
 2. 基于物品的协同过滤 (Item-CF)
@@ -24,53 +23,35 @@ class RecommendationEngine:
         self.courses = {c['id']: c for c in courses}
         self.interactions = interactions
 
-        # 用户-课程评分矩阵 (隐式反馈: 学习进度+评分+行为权重)
         self.user_course_matrix = self._build_matrix()
-
-        # 用户已学习课程集合
         self.user_learned = defaultdict(set)
         for inter in interactions:
             self.user_learned[inter['user_id']].add(inter['course_id'])
-
-        # 课程-用户倒排表
         self.course_users = defaultdict(set)
         for inter in interactions:
             self.course_users[inter['course_id']].add(inter['user_id'])
-
-        # 课程内容向量 (类别+标签+难度 one-hot)
         self.course_content_vectors = self._build_content_vectors()
-
-        # 用户偏好向量 (从学习历史聚合)
         self.user_preference_vectors = self._build_user_preferences()
-
-        # 预计算课程相似度 (Item-CF)
         self.item_similarity = self._compute_item_similarity()
-
-        # 预计算用户相似度 (User-CF)
         self.user_similarity = self._compute_user_similarity()
-
-        # 课程热门度分数
         self.course_popularity = self._compute_popularity()
+        self.svd_params = self._train_svd()
 
     def _build_matrix(self) -> Dict[int, Dict[int, float]]:
-        """构建用户-课程评分矩阵（隐式反馈转评分）"""
         matrix = defaultdict(dict)
         for inter in self.interactions:
             uid = inter['user_id']
             cid = inter['course_id']
-            # 综合评分 = 显式评分*0.5 + 学习进度*0.3 + 行为权重*0.2
             score = (
                 inter.get('rating', 0) * 0.5
                 + inter.get('progress', 0) * 0.3
                 + inter.get('behavior_weight', 0) * 0.2
             )
-            # 取最大值（多次交互取最强信号）
             if cid not in matrix[uid] or score > matrix[uid][cid]:
                 matrix[uid][cid] = round(score, 2)
         return dict(matrix)
 
     def _build_content_vectors(self) -> Dict[int, Dict[str, float]]:
-        """构建课程内容特征向量（类别+标签+难度）"""
         vectors = {}
         for cid, course in self.courses.items():
             vec = defaultdict(float)
@@ -83,7 +64,6 @@ class RecommendationEngine:
         return vectors
 
     def _build_user_preferences(self) -> Dict[int, Dict[str, float]]:
-        """基于学习历史构建用户偏好向量"""
         prefs = {}
         for uid in self.users:
             pref = defaultdict(float)
@@ -95,14 +75,12 @@ class RecommendationEngine:
                 weight = self.user_course_matrix.get(uid, {}).get(cid, 0.5)
                 for feat, val in self.course_content_vectors.get(cid, {}).items():
                     pref[feat] += val * weight
-            # 归一化
             total = sum(pref.values()) or 1
             prefs[uid] = {k: round(v / total, 4) for k, v in pref.items()}
         return prefs
 
     @staticmethod
     def _cosine_similarity(vec_a: Dict, vec_b: Dict) -> float:
-        """余弦相似度"""
         common = set(vec_a.keys()) & set(vec_b.keys())
         if not common:
             return 0.0
@@ -114,7 +92,6 @@ class RecommendationEngine:
         return dot / (norm_a * norm_b)
 
     def _compute_item_similarity(self) -> Dict[int, Dict[int, float]]:
-        """计算课程间相似度（Item-CF，带热门惩罚）"""
         sim = defaultdict(dict)
         course_ids = list(self.course_users.keys())
         for i, c1 in enumerate(course_ids):
@@ -123,24 +100,21 @@ class RecommendationEngine:
                 users2 = self.course_users[c2]
                 common = users1 & users2
                 if not common:
-                    # 也用内容相似度补充
                     content_sim = self._cosine_similarity(
                         self.course_content_vectors.get(c1, {}),
                         self.course_content_vectors.get(c2, {})
                     )
                     if content_sim > 0.3:
-                        s = content_sim * 0.5  # 纯内容相似度降权
+                        s = content_sim * 0.5
                         sim[c1][c2] = round(s, 4)
                         sim[c2][c1] = round(s, 4)
                     continue
-                # 改进的余弦相似度：对热门用户惩罚
                 num = sum(
                     1 / math.log(1 + len(self.course_users_of(u)))
                     for u in common
                 )
                 den = math.sqrt(len(users1) * len(users2))
                 s = num / den if den > 0 else 0
-                # 混合内容相似度
                 content_sim = self._cosine_similarity(
                     self.course_content_vectors.get(c1, {}),
                     self.course_content_vectors.get(c2, {})
@@ -151,11 +125,9 @@ class RecommendationEngine:
         return dict(sim)
 
     def course_users_of(self, uid):
-        """获取用户学习的课程数量（辅助方法）"""
         return self.user_learned.get(uid, set())
 
     def _compute_user_similarity(self) -> Dict[int, Dict[int, float]]:
-        """计算用户间相似度（User-CF）"""
         sim = defaultdict(dict)
         user_ids = list(self.user_course_matrix.keys())
         for i, u1 in enumerate(user_ids):
@@ -170,7 +142,6 @@ class RecommendationEngine:
         return dict(sim)
 
     def _compute_popularity(self) -> Dict[int, float]:
-        """计算课程热门度分数"""
         pop = {}
         max_learners = max(
             (len(us) for us in self.course_users.values()), default=1
@@ -184,14 +155,105 @@ class RecommendationEngine:
             ]
             if ratings:
                 avg_rating = sum(ratings) / len(ratings)
-            # 热门度 = 学习人数归一化*0.6 + 平均评分*0.4
             pop[cid] = round(
                 (learners / max_learners) * 0.6 + (avg_rating / 5) * 0.4, 4
             )
         return pop
 
+    # ===== SVD 矩阵分解（机器学习隐语义模型）=====
+
+    def _train_svd(self, n_factors: int = 5, n_epochs: int = 120,
+                   lr: float = 0.005, reg: float = 0.02) -> dict:
+        """训练 SVD 矩阵分解模型（参考 Surprise 库的 SVD 实现）"""
+        import random
+        random.seed(42)
+
+        user_ids = list(self.users.keys())
+        course_ids = list(self.courses.keys())
+
+        all_ratings = []
+        for uid, courses in self.user_course_matrix.items():
+            all_ratings.extend(courses.values())
+        global_mean = sum(all_ratings) / len(all_ratings) if all_ratings else 3.0
+
+        bu = {uid: 0.0 for uid in user_ids}
+        bi = {cid: 0.0 for cid in course_ids}
+        U = {uid: [random.gauss(0, 0.1) for _ in range(n_factors)]
+             for uid in user_ids}
+        V = {cid: [random.gauss(0, 0.1) for _ in range(n_factors)]
+             for cid in course_ids}
+
+        trainset = []
+        for uid, courses in self.user_course_matrix.items():
+            for cid, rating in courses.items():
+                trainset.append((uid, cid, rating))
+
+        for epoch in range(n_epochs):
+            random.shuffle(trainset)
+            for uid, cid, r in trainset:
+                pred = global_mean + bu[uid] + bi[cid]
+                for f in range(n_factors):
+                    pred += U[uid][f] * V[cid][f]
+                err = r - pred
+
+                bu[uid] += lr * (err - reg * bu[uid])
+                bi[cid] += lr * (err - reg * bi[cid])
+
+                u_factors = U[uid][:]
+                for f in range(n_factors):
+                    U[uid][f] += lr * (err * V[cid][f] - reg * U[uid][f])
+                    V[cid][f] += lr * (err * u_factors[f] - reg * V[cid][f])
+
+            if epoch > 0 and epoch % 40 == 0:
+                lr *= 0.7
+
+        return {
+            'global_mean': global_mean,
+            'bu': bu, 'bi': bi,
+            'U': U, 'V': V,
+            'n_factors': n_factors
+        }
+
+    def _svd_predict(self, user_id: int, course_id: int) -> float:
+        p = self.svd_params
+        pred = p['global_mean']
+        if user_id in p['bu']:
+            pred += p['bu'][user_id]
+        if course_id in p['bi']:
+            pred += p['bi'][course_id]
+        if user_id in p['U'] and course_id in p['V']:
+            for f in range(p['n_factors']):
+                pred += p['U'][user_id][f] * p['V'][course_id][f]
+        return pred
+
+    def recommend_svd(self, user_id: int, top_n: int = 8) -> List[dict]:
+        """SVD 矩阵分解推荐（机器学习）"""
+        learned = self.user_learned.get(user_id, set())
+        results = []
+        for cid in self.courses:
+            if cid in learned:
+                continue
+            pred = self._svd_predict(user_id, cid)
+            if pred > 0:
+                results.append({
+                    'course_id': cid,
+                    'score': round(pred, 3),
+                    'reason': 'AI 隐语义模型预测你可能感兴趣',
+                    'algorithm': 'svd'
+                })
+        results.sort(key=lambda x: -x['score'])
+        results = results[:top_n]
+
+        if results:
+            scores = [r['score'] for r in results]
+            s_min, s_max = min(scores), max(scores)
+            s_range = s_max - s_min if s_max > s_min else 1
+            for r in results:
+                r['score'] = round((r['score'] - s_min) / s_range, 3)
+
+        return results
+
     def recommend_user_cf(self, user_id: int, top_n: int = 8) -> List[dict]:
-        """基于用户的协同过滤推荐"""
         learned = self.user_learned.get(user_id, set())
         similar_users = self.user_similarity.get(user_id, {})
         if not similar_users:
@@ -222,13 +284,12 @@ class RecommendationEngine:
         return results[:top_n]
 
     def recommend_item_cf(self, user_id: int, top_n: int = 8) -> List[dict]:
-        """基于物品的协同过滤推荐"""
         learned = self.user_learned.get(user_id, set())
         if not learned:
             return []
 
         scores = defaultdict(float)
-        best_source = {}  # 记录每个推荐课程最相似的已学课程
+        best_source = {}
         for learned_cid in learned:
             user_rating = self.user_course_matrix.get(user_id, {}).get(
                 learned_cid, 0.5
@@ -254,7 +315,6 @@ class RecommendationEngine:
         return results[:top_n]
 
     def recommend_content_based(self, user_id: int, top_n: int = 8) -> List[dict]:
-        """基于内容的推荐"""
         learned = self.user_learned.get(user_id, set())
         pref = self.user_preference_vectors.get(user_id, {})
         if not pref:
@@ -267,7 +327,6 @@ class RecommendationEngine:
             content_vec = self.course_content_vectors.get(cid, {})
             score = self._cosine_similarity(pref, content_vec)
             if score > 0:
-                # 找出匹配的特征
                 matched_cats = [
                     k.replace('cat_', '') for k in pref
                     if k in content_vec and k.startswith('cat_')
@@ -291,7 +350,6 @@ class RecommendationEngine:
         return results[:top_n]
 
     def recommend_popular(self, top_n: int = 8) -> List[dict]:
-        """热门推荐"""
         results = []
         for cid, pop in self.course_popularity.items():
             course = self.courses[cid]
@@ -306,22 +364,18 @@ class RecommendationEngine:
         return results[:top_n]
 
     def recommend_hybrid(self, user_id: int, top_n: int = 8) -> List[dict]:
-        """
-        混合推荐（加权融合）
-        权重：User-CF 0.3 + Item-CF 0.3 + Content 0.25 + Popular 0.15
-        冷启动用户：Content 0.4 + Popular 0.6
-        """
         learned = self.user_learned.get(user_id, set())
         is_cold_start = len(learned) < 2
 
         if is_cold_start:
-            weights = {'content_based': 0.4, 'popular': 0.6}
+            weights = {'content_based': 0.35, 'popular': 0.45, 'svd': 0.20}
         else:
             weights = {
-                'user_cf': 0.30,
-                'item_cf': 0.30,
-                'content_based': 0.25,
-                'popular': 0.15
+                'user_cf': 0.22,
+                'item_cf': 0.22,
+                'content_based': 0.18,
+                'popular': 0.10,
+                'svd': 0.28
             }
 
         all_scores = defaultdict(float)
@@ -331,10 +385,10 @@ class RecommendationEngine:
             'user_cf': self.recommend_user_cf(user_id, 20),
             'item_cf': self.recommend_item_cf(user_id, 20),
             'content_based': self.recommend_content_based(user_id, 20),
-            'popular': self.recommend_popular(20)
+            'popular': self.recommend_popular(20),
+            'svd': self.recommend_svd(user_id, 20)
         }
 
-        # 对每个算法的分数做 min-max 归一化后再加权
         for algo, recs in recs_map.items():
             if algo not in weights or not recs:
                 continue
@@ -346,7 +400,7 @@ class RecommendationEngine:
                 cid = r['course_id']
                 if cid in learned:
                     continue
-                norm_score = (r['score'] - s_min) / s_range  # 归一化到 0-1
+                norm_score = (r['score'] - s_min) / s_range
                 all_scores[cid] += norm_score * w
                 if r['reason'] and len(all_reasons[cid]) < 2:
                     all_reasons[cid].append(r['reason'])
@@ -366,12 +420,10 @@ class RecommendationEngine:
         return self.courses.get(cid, {}).get('name', '未知课程')
 
     def get_user_profile(self, user_id: int) -> dict:
-        """获取用户画像摘要"""
         user = self.users.get(user_id, {})
         learned = self.user_learned.get(user_id, set())
         pref = self.user_preference_vectors.get(user_id, {})
 
-        # Top 偏好分类
         cat_scores = {
             k.replace('cat_', ''): v for k, v in pref.items()
             if k.startswith('cat_')
@@ -401,8 +453,6 @@ class RecommendationEngine:
     def record_interaction(self, user_id: int, course_id: int,
                            progress: float = 0, rating: int = 0,
                            behavior_weight: float = 0):
-        """记录用户学习行为并更新模型"""
-        # 检查是否已有记录
         existing = None
         for inter in self.interactions:
             if inter['user_id'] == user_id and inter['course_id'] == course_id:
@@ -427,9 +477,9 @@ class RecommendationEngine:
             self.user_learned[user_id].add(course_id)
             self.course_users[course_id].add(user_id)
 
-        # 重建矩阵和偏好
         self.user_course_matrix = self._build_matrix()
         self.user_preference_vectors = self._build_user_preferences()
         self.item_similarity = self._compute_item_similarity()
         self.user_similarity = self._compute_user_similarity()
         self.course_popularity = self._compute_popularity()
+        self.svd_params = self._train_svd()
