@@ -1,17 +1,16 @@
-// 培训管理系统 - 智能推荐前端
+// 培训管理系统 - AI 智能推荐前端
 const API = '';
 let currentUser = null;
 let currentAlgo = 'hybrid';
 let currentCourse = null;
 let allCourses = [];
+let chatOpen = false;
 
-// 头像颜色池
 const AVATAR_COLORS = [
     '#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
     '#EC4899', '#06B6D4', '#F97316', '#6366F1', '#14B8A6'
 ];
 
-// ===== 初始化 =====
 async function init() {
     await loadUsers();
     await loadCourses();
@@ -52,39 +51,87 @@ function bindEvents() {
     });
 }
 
-// ===== 选择用户 =====
 async function selectUser(userId) {
     currentUser = userId;
     document.querySelectorAll('.user-item').forEach(el => {
         el.classList.toggle('active', parseInt(el.dataset.id) === userId);
     });
-
     document.getElementById('welcomeBanner').style.display = 'none';
     document.getElementById('userBanner').style.display = 'flex';
+    document.getElementById('pathSection').style.display = 'block';
     document.getElementById('algoTabs').style.display = 'grid';
     document.getElementById('recommendSection').style.display = 'block';
     document.getElementById('learnedSection').style.display = 'block';
     document.getElementById('compareSection').style.display = 'block';
     document.getElementById('profilePanel').style.display = 'block';
-
     await Promise.all([
         loadRecommendations(),
         loadProfile(),
-        loadLearnedCourses()
+        loadLearnedCourses(),
+        loadLearningPath()
     ]);
 }
 
-// ===== 加载推荐 =====
+async function loadLearningPath() {
+    const res = await fetch(`${API}/api/learning-path/${currentUser}`);
+    const path = await res.json();
+
+    document.getElementById('pathDirection').textContent = path.direction;
+
+    document.getElementById('pathOverview').innerHTML = `
+        <div class="path-progress-bar">
+            <div class="path-progress-fill" style="width:${path.progress}%"></div>
+        </div>
+        <div class="path-overview-info">
+            <div class="path-overview-stats">
+                <span><strong>${path.completed}</strong>/${path.total} 门已完成</span>
+                <span>进度 <strong>${path.progress}%</strong></span>
+                <span>剩余 <strong>${path.remaining_hours}</strong> 小时</span>
+            </div>
+            <div class="path-ai-advice">🤖 ${path.ai_advice}</div>
+        </div>
+    `;
+
+    document.getElementById('pathStages').innerHTML = path.stages.map(stage => `
+        <div class="path-stage">
+            <div class="path-stage-header">
+                <div class="path-stage-num">${stage.stage}</div>
+                <div>
+                    <div class="path-stage-title">${stage.title}</div>
+                    <div class="path-stage-desc">${stage.description}</div>
+                </div>
+            </div>
+            <div class="path-stage-courses">
+                ${stage.courses.map(c => `
+                    <div class="path-course ${c.status}" data-id="${c.id}">
+                        <div class="path-course-color" style="background:${c.cover_color}"></div>
+                        <div class="path-course-info">
+                            <div class="path-course-name">${c.name}</div>
+                            <div class="path-course-meta">${c.duration}h · ${c.difficulty}</div>
+                        </div>
+                        <div class="path-course-status">
+                            ${c.status === 'completed' ? '<span class="status-done">✓ 已完成</span>' : '<span class="status-todo">待学习</span>'}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+
+    document.querySelectorAll('.path-course').forEach(el => {
+        el.onclick = () => openCourseModal(parseInt(el.dataset.id));
+    });
+}
+
 async function loadRecommendations() {
     const grid = document.getElementById('recommendGrid');
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#9CA3AF;">推荐计算中...</div>';
-
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#9CA3AF;">AI 推荐计算中...</div>';
     const res = await fetch(`${API}/api/recommend/${currentUser}?algorithm=${currentAlgo}&top_n=8`);
     const data = await res.json();
 
-    // 更新标题
     const titles = {
-        hybrid: '🎯 为你智能推荐',
+        hybrid: '🎯 AI 智能推荐',
+        svd: '🧠 SVD 机器学习推荐',
         user_cf: '👥 相似学员在学',
         item_cf: '🔗 你可能感兴趣的课程',
         content: '🏷️ 根据你的兴趣推荐',
@@ -93,7 +140,6 @@ async function loadRecommendations() {
     document.getElementById('sectionTitle').textContent = titles[currentAlgo] || '为你推荐';
     document.getElementById('sectionSub').textContent = data.algorithm_name;
 
-    // 更新用户横幅
     const p = data.profile;
     document.getElementById('userName').textContent = p.user.name;
     document.getElementById('userDept').textContent = `${p.user.department} · ${p.user.position}`;
@@ -107,17 +153,14 @@ async function loadRecommendations() {
         grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#9CA3AF;">暂无推荐结果</div>';
         return;
     }
-
     grid.innerHTML = data.recommendations.map(c => renderCourseCard(c, true)).join('');
     bindCardClicks(grid);
 }
 
-// ===== 加载用户画像 =====
 async function loadProfile() {
     const res = await fetch(`${API}/api/profile/${currentUser}`);
     const p = await res.json();
     const el = document.getElementById('profileContent');
-
     let html = `
         <div class="profile-stat">
             <span>已学课程</span>
@@ -154,17 +197,14 @@ async function loadProfile() {
     el.innerHTML = html;
 }
 
-// ===== 已学课程 =====
 async function loadLearnedCourses() {
     const res = await fetch(`${API}/api/profile/${currentUser}`);
     const p = await res.json();
     const grid = document.getElementById('learnedGrid');
-
     if (!p.learned_courses.length) {
         grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:#9CA3AF;">暂无学习记录</div>';
         return;
     }
-
     grid.innerHTML = p.learned_courses.map(c => `
         <div class="course-card" data-id="${c.id}">
             <div class="course-cover" style="background:${c.cover_color}">
@@ -187,13 +227,14 @@ async function loadLearnedCourses() {
     bindCardClicks(grid);
 }
 
-// ===== 渲染课程卡片 =====
 function renderCourseCard(c, showReason) {
     const scorePct = Math.min(100, Math.round(c.score * 100));
+    const isAI = c.algorithm === 'hybrid' || c.algorithm === 'svd';
     return `
         <div class="course-card" data-id="${c.id}">
             <div class="course-cover" style="background:${c.cover_color}">
                 <span class="course-difficulty">${c.difficulty}</span>
+                ${isAI ? '<span class="ai-course-badge">AI</span>' : ''}
                 <span class="course-cover-text">${c.name}</span>
             </div>
             <div class="course-body">
@@ -222,13 +263,10 @@ function bindCardClicks(container) {
     });
 }
 
-// ===== 课程详情弹窗 =====
 function openCourseModal(courseId) {
     currentCourse = allCourses.find(c => c.id === courseId);
     if (!currentCourse) return;
-
     const isLearned = !!(currentUser && engine_learned_has(courseId));
-
     document.getElementById('modalTitle').textContent = currentCourse.name;
     document.getElementById('modalDesc').textContent = currentCourse.desc;
     document.getElementById('modalCover').style.background = currentCourse.cover_color;
@@ -240,8 +278,6 @@ function openCourseModal(courseId) {
         <span class="meta-chip">👨‍🏫 ${currentCourse.instructor}</span>
         <span class="meta-chip">👥 ${currentCourse.learners} 人学习</span>
     `;
-
-    // 推荐理由
     const reasonEl = document.getElementById('modalReason');
     const recCard = document.querySelector(`#recommendGrid .course-card[data-id="${courseId}"]`);
     if (recCard) {
@@ -251,14 +287,12 @@ function openCourseModal(courseId) {
     } else {
         reasonEl.style.display = 'none';
     }
-
     document.getElementById('btnLearn').textContent = isLearned ? '继续学习' : '开始学习';
     document.getElementById('ratingPicker').style.display = 'none';
     document.getElementById('courseModal').classList.add('show');
 }
 
 function engine_learned_has(courseId) {
-    // 从已学课程区域判断
     const el = document.querySelector(`#learnedGrid .course-card[data-id="${courseId}"]`);
     return !!el;
 }
@@ -268,14 +302,10 @@ function closeModal(e) {
     document.getElementById('courseModal').classList.remove('show');
 }
 
-// ===== 开始学习（模拟学习行为，实时更新推荐）=====
 async function startLearning() {
     if (!currentUser || !currentCourse) return;
-
-    // 模拟学习进度和行为
-    const progress = Math.random() * 0.5 + 0.3; // 30%-80%
+    const progress = Math.random() * 0.5 + 0.3;
     const behaviorWeight = 0.7;
-
     const res = await fetch(`${API}/api/interact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -288,19 +318,18 @@ async function startLearning() {
         })
     });
     const data = await res.json();
-
     if (data.success) {
-        showToast('✅ 学习行为已记录，推荐结果已实时更新！');
+        showToast('✅ 学习行为已记录，AI 推荐已实时更新！');
         closeModal();
         await Promise.all([
             loadRecommendations(),
             loadProfile(),
-            loadLearnedCourses()
+            loadLearnedCourses(),
+            loadLearningPath()
         ]);
     }
 }
 
-// ===== 评分 =====
 function showRating() {
     const picker = document.getElementById('ratingPicker');
     picker.style.display = 'block';
@@ -339,31 +368,27 @@ async function submitRating(rating) {
     });
     const data = await res.json();
     if (data.success) {
-        showToast(`⭐ 已给出 ${rating} 星评价，推荐已更新！`);
+        showToast(`⭐ 已给出 ${rating} 星评价，AI 推荐已更新！`);
         closeModal();
         await Promise.all([
             loadRecommendations(),
             loadProfile(),
-            loadLearnedCourses()
+            loadLearnedCourses(),
+            loadLearningPath()
         ]);
     }
 }
 
-// ===== 算法对比 =====
 async function runCompare() {
     if (!currentUser) return;
     const grid = document.getElementById('compareGrid');
     grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:#9CA3AF;">正在运行全部算法对比...</div>';
-
     const res = await fetch(`${API}/api/compare/${currentUser}?top_n=5`);
     const data = await res.json();
-
     const algoIcons = {
-        hybrid: '🔀', user_cf: '👥', item_cf: '🔗', content: '🏷️', popular: '🔥'
+        hybrid: '🔀', svd: '🧠', user_cf: '👥', item_cf: '🔗', content: '🏷️', popular: '🔥'
     };
-
     grid.innerHTML = Object.entries(data).map(([key, val]) => {
-        // 对每个算法的分数做归一化显示
         const scores = val.courses.map(c => c.score);
         const sMin = Math.min(...scores), sMax = Math.max(...scores);
         const sRange = sMax - sMin || 1;
@@ -383,7 +408,69 @@ async function runCompare() {
     `}).join('');
 }
 
-// ===== Toast =====
+function toggleChat() {
+    chatOpen = !chatOpen;
+    document.getElementById('chatPanel').classList.toggle('show', chatOpen);
+    if (chatOpen) {
+        setTimeout(() => document.getElementById('chatInput').focus(), 300);
+    }
+}
+
+function quickAsk(msg) {
+    document.getElementById('chatInput').value = msg;
+    sendChat();
+}
+
+async function sendChat() {
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if (!msg) return;
+    if (!currentUser) {
+        addChatMessage('请先在左侧选择一位学员，我才能为你提供个性化建议哦~', 'ai');
+        return;
+    }
+
+    addChatMessage(msg, 'user');
+    input.value = '';
+
+    const typingId = 'typing-' + Date.now();
+    const messagesEl = document.getElementById('chatMessages');
+    messagesEl.insertAdjacentHTML('beforeend', `
+        <div class="chat-msg ai-msg" id="${typingId}">
+            <div class="chat-msg-avatar">🤖</div>
+            <div class="chat-bubble typing">正在思考...</div>
+        </div>
+    `);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    try {
+        const res = await fetch(`${API}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: currentUser, message: msg })
+        });
+        const data = await res.json();
+        document.getElementById(typingId)?.remove();
+        addChatMessage(data.reply || '抱歉，我暂时无法回答这个问题。', 'ai');
+    } catch (e) {
+        document.getElementById(typingId)?.remove();
+        addChatMessage('网络错误，请稍后重试。', 'ai');
+    }
+}
+
+function addChatMessage(text, sender) {
+    const messagesEl = document.getElementById('chatMessages');
+    const isUser = sender === 'user';
+    messagesEl.insertAdjacentHTML('beforeend', `
+        <div class="chat-msg ${isUser ? 'user-msg' : 'ai-msg'}">
+            ${!isUser ? '<div class="chat-msg-avatar">🤖</div>' : ''}
+            <div class="chat-bubble">${text.replace(/\n/g, '<br>')}</div>
+            ${isUser ? '<div class="chat-msg-avatar user-avatar-sm">我</div>' : ''}
+        </div>
+    `);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
 function showToast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -391,5 +478,4 @@ function showToast(msg) {
     setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// 启动
 init();
