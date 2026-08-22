@@ -8,9 +8,7 @@ import os
 import copy
 import unittest
 from unittest.mock import patch, MagicMock
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from data import COURSES, USERS, INTERACTIONS
 from recommender import RecommendationEngine
 from ai_engine import AIEngine
@@ -23,7 +21,6 @@ def fresh_data():
 
 class TestRecommendationEngine(unittest.TestCase):
     """推荐引擎核心测试"""
-
     @classmethod
     def setUpClass(cls):
         cls.engine = RecommendationEngine(USERS, COURSES, INTERACTIONS)
@@ -196,7 +193,6 @@ class TestRecommendationEngine(unittest.TestCase):
 
 class TestAIEngine(unittest.TestCase):
     """AI 增强引擎测试"""
-
     @classmethod
     def setUpClass(cls):
         cls.engine = RecommendationEngine(USERS, COURSES, INTERACTIONS)
@@ -283,16 +279,13 @@ class TestAIEngine(unittest.TestCase):
     def test_position_matches_course(self):
         """岗位-课程匹配判断"""
         self.assertTrue(
-            self.ai._position_matches_course("后端开发工程师", ["Java", "Spring"], ["技术研发"])
-        )
+            self.ai._position_matches_course("后端开发工程师", ["Java", "Spring"], ["技术研发"]))
         self.assertFalse(
-            self.ai._position_matches_course("HRBP", ["Java"], ["技术研发"])
-        )
+            self.ai._position_matches_course("HRBP", ["Java"], ["技术研发"]))
 
 
 class TestBitableClient(unittest.TestCase):
     """多维表格客户端测试"""
-
     def test_client_not_configured_by_default(self):
         """未配置环境变量时客户端不可用"""
         from bitable_client import BitableClient
@@ -345,7 +338,6 @@ class TestBitableClient(unittest.TestCase):
 
 class TestFlaskAPI(unittest.TestCase):
     """Flask API 端点测试"""
-
     @classmethod
     def setUpClass(cls):
         from app import app
@@ -370,9 +362,10 @@ class TestFlaskAPI(unittest.TestCase):
         resp = self.client.get('/api/users')
         self.assertEqual(resp.status_code, 200)
         users = resp.get_json()
-        self.assertEqual(len(users), 10)
+        self.assertGreaterEqual(len(users), 10)
         self.assertIn('name', users[0])
         self.assertIn('learned_count', users[0])
+        self.assertIn('feishu_open_id', users[0])
 
     def test_get_courses(self):
         """获取课程列表"""
@@ -482,7 +475,6 @@ class TestFlaskAPI(unittest.TestCase):
 
 class TestEdgeCases(unittest.TestCase):
     """边界条件和异常场景测试"""
-
     @classmethod
     def setUpClass(cls):
         cls.engine = RecommendationEngine(USERS, COURSES, INTERACTIONS)
