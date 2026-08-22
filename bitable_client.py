@@ -14,7 +14,6 @@
     BITABLE_TABLE_ENROLLMENTS   报名审批表 ID（可选）
     BITABLE_TABLE_ANNOUNCEMENTS 公告表 ID（可选）
 """
-
 import os
 import json
 import logging
@@ -45,11 +44,13 @@ class BitableClient:
 
     @property
     def is_configured(self) -> bool:
+        """是否已配置飞书凭证"""
         return bool(self.app_id and self.app_secret and self.app_token)
 
     def _request(self, url: str, method: str = "GET",
                  data: dict = None, params: dict = None,
                  retry_auth: bool = True) -> dict:
+        """发送 HTTP 请求到飞书 API"""
         if params:
             url = f"{url}?{parse.urlencode(params)}"
         headers = {"Content-Type": "application/json; charset=utf-8"}
@@ -74,6 +75,7 @@ class BitableClient:
         return result.get("data", {})
 
     def _authenticate(self):
+        """获取 tenant_access_token"""
         if self._token:
             return
         result = self._request(
@@ -87,6 +89,7 @@ class BitableClient:
         logger.info("飞书多维表格认证成功")
 
     def connect(self) -> bool:
+        """连接并验证多维表格可访问性"""
         if not self.is_configured:
             logger.info("未配置飞书凭证，使用本地数据")
             return False
@@ -96,6 +99,7 @@ class BitableClient:
         return True
 
     def _list_tables(self) -> List[dict]:
+        """列出多维表格中的所有数据表"""
         url = BITABLE_LIST_URL.format(app_token=self.app_token)
         result = self._request(url)
         tables = result.get("items", [])
@@ -104,6 +108,7 @@ class BitableClient:
         return tables
 
     def _resolve_table_id(self, table_key: str, table_name: str) -> str:
+        """解析表 ID：优先环境变量，其次按名称查找"""
         env_var = f"BITABLE_TABLE_{table_key.upper()}"
         table_id = os.environ.get(env_var, "")
         if table_id:
@@ -118,10 +123,14 @@ class BitableClient:
             )
         return table_id
 
+    # ===== 记录 CRUD =====
     def list_records(self, table_key: str, table_name: str,
                      page_size: int = 100) -> List[dict]:
+        """列出数据表中的所有记录（自动分页）"""
         table_id = self._resolve_table_id(table_key, table_name)
-        url = BITABLE_RECORDS_URL.format(app_token=self.app_token, table_id=table_id)
+        url = BITABLE_RECORDS_URL.format(
+            app_token=self.app_token, table_id=table_id
+        )
         all_items = []
         page_token = None
         while True:
@@ -135,15 +144,23 @@ class BitableClient:
             page_token = result.get("page_token")
         return all_items
 
-    def create_record(self, table_key: str, table_name: str, fields: dict) -> dict:
+    def create_record(self, table_key: str, table_name: str,
+                      fields: dict) -> dict:
+        """创建一条记录"""
         table_id = self._resolve_table_id(table_key, table_name)
-        url = BITABLE_RECORDS_URL.format(app_token=self.app_token, table_id=table_id)
+        url = BITABLE_RECORDS_URL.format(
+            app_token=self.app_token, table_id=table_id
+        )
         return self._request(url, method="POST", data={"fields": fields})
 
     def batch_create_records(self, table_key: str, table_name: str,
                              records: List[dict]) -> dict:
+        """批量创建记录（每次最多 500 条）"""
         table_id = self._resolve_table_id(table_key, table_name)
-        url = BITABLE_RECORDS_BATCH_URL.format(app_token=self.app_token, table_id=table_id)
+        url = BITABLE_RECORDS_BATCH_URL.format(
+            app_token=self.app_token, table_id=table_id
+        )
+        # 飞书批量接口每次最多 500 条
         result = {"records": []}
         for i in range(0, len(records), 500):
             batch = records[i:i + 500]
@@ -153,11 +170,14 @@ class BitableClient:
 
     def update_record(self, table_key: str, table_name: str,
                       record_id: str, fields: dict) -> dict:
+        """更新一条记录"""
         table_id = self._resolve_table_id(table_key, table_name)
         url = f"{BITABLE_RECORDS_URL.format(app_token=self.app_token, table_id=table_id)}/{record_id}"
         return self._request(url, method="PUT", data={"fields": fields})
 
-    def delete_record(self, table_key: str, table_name: str, record_id: str) -> bool:
+    def delete_record(self, table_key: str, table_name: str,
+                      record_id: str) -> bool:
+        """删除一条记录"""
         table_id = self._resolve_table_id(table_key, table_name)
         url = f"{BITABLE_RECORDS_URL.format(app_token=self.app_token, table_id=table_id)}/{record_id}"
         self._request(url, method="DELETE")
@@ -165,8 +185,11 @@ class BitableClient:
 
     def search_records(self, table_key: str, table_name: str,
                        filter_conditions: list) -> List[dict]:
+        """按条件搜索记录"""
         table_id = self._resolve_table_id(table_key, table_name)
-        url = BITABLE_RECORDS_SEARCH_URL.format(app_token=self.app_token, table_id=table_id)
+        url = BITABLE_RECORDS_SEARCH_URL.format(
+            app_token=self.app_token, table_id=table_id
+        )
         body = {"filter": {"conjunction": "and", "conditions": filter_conditions}}
         result = self._request(url, method="POST", data=body)
         return result.get("items", [])
@@ -197,12 +220,14 @@ class DataProvider:
         self._instructors = []
         self._enrollments = []
         self._announcements = []
+        # 记录多维表格 record_id 映射，用于更新/删除
         self._record_id_map = {
             "courses": {}, "users": {}, "interactions": {},
             "instructors": {}, "enrollments": {}, "announcements": {},
         }
 
     def init(self):
+        """初始化数据加载"""
         self._use_bitable = self.client.connect()
         if self._use_bitable:
             self._load_from_bitable()
@@ -227,6 +252,7 @@ class DataProvider:
         self._announcements = self._default_announcements()
 
     def _load_from_bitable(self):
+        """从多维表格加载所有模块数据"""
         loaders = [
             ("courses", self._record_to_course),
             ("users", self._record_to_user),
@@ -253,6 +279,7 @@ class DataProvider:
                 setattr(self, f"_{key}", fallback())
 
     def _safe_get(self, fields: dict, key: str, default=None):
+        """安全获取飞书多维表格字段值"""
         val = fields.get(key, default)
         if isinstance(val, list) and val:
             if isinstance(val[0], dict) and "text" in val[0]:
@@ -260,6 +287,26 @@ class DataProvider:
             return val[0]
         return val if val is not None else default
 
+    def _safe_get_person(self, fields: dict, key: str) -> dict:
+        """
+        解析飞书多维表格“人员”字段类型。
+        飞书人员字段格式: [{"id": "ou_xxx", "name": "张三", "en_name": "...", "avatar_url": "..."}]
+        返回第一个人员信息字典，无数据时返回空字典。
+        """
+        val = fields.get(key)
+        if isinstance(val, list) and val:
+            person = val[0]
+            if isinstance(person, dict):
+                return {
+                    "id": person.get("id", ""),
+                    "name": person.get("name", ""),
+                    "en_name": person.get("en_name", ""),
+                    "avatar_url": person.get("avatar_url", ""),
+                    "union_id": person.get("union_id", ""),
+                }
+        return {}
+
+    # ===== 记录转换器 =====
     def _record_to_course(self, record: dict) -> dict:
         f = record.get("fields", {})
         return {
@@ -276,12 +323,18 @@ class DataProvider:
 
     def _record_to_user(self, record: dict) -> dict:
         f = record.get("fields", {})
+        # 解析飞书“人员”字段类型（关联通讯录）
+        person = self._safe_get_person(f, "人员")
         return {
             "id": int(self._safe_get(f, "学员ID", 0) or 0),
-            "name": str(self._safe_get(f, "姓名", "")),
+            "name": str(self._safe_get(f, "姓名", person.get("name", ""))),
             "department": str(self._safe_get(f, "部门", "")),
             "position": str(self._safe_get(f, "岗位", "")),
-            "avatar": str(self._safe_get(f, "头像", "")),
+            "avatar": str(self._safe_get(f, "头像", person.get("name", "")[:1] if person.get("name") else "")),
+            "feishu_open_id": person.get("id", ""),
+            "feishu_union_id": person.get("union_id", ""),
+            "email": str(self._safe_get(f, "邮箱", "")),
+            "mobile": str(self._safe_get(f, "手机号", "")),
         }
 
     def _record_to_interaction(self, record: dict) -> dict:
@@ -336,6 +389,7 @@ class DataProvider:
 
     @staticmethod
     def _parse_list(value) -> list:
+        """解析逗号/顿号分隔的字符串为列表"""
         if isinstance(value, list):
             return [str(v).strip() for v in value if str(v).strip()]
         if isinstance(value, str):
@@ -344,6 +398,7 @@ class DataProvider:
             return [v.strip() for v in value.split(",") if v.strip()]
         return []
 
+    # ===== 本地默认数据（未配置多维表格时使用）=====
     def _default_instructors(self) -> list:
         return [
             {"id": 1, "name": "陈明", "department": "技术研发部", "title": "高级架构师",
@@ -385,6 +440,7 @@ class DataProvider:
              "status": "已发布", "priority": "普通", "category": "入职培训"},
         ]
 
+    # ===== 公开接口：数据属性 =====
     @property
     def courses(self) -> List[dict]:
         return self._courses
@@ -410,7 +466,6 @@ class DataProvider:
         return self._announcements
 
     # ===== CRUD：课程管理 =====
-
     def add_course(self, course: dict) -> bool:
         self._courses.append(course)
         if self._use_bitable:
@@ -451,7 +506,6 @@ class DataProvider:
         return True
 
     # ===== CRUD：讲师管理 =====
-
     def add_instructor(self, instructor: dict) -> bool:
         self._instructors.append(instructor)
         if self._use_bitable:
@@ -489,7 +543,6 @@ class DataProvider:
         return True
 
     # ===== CRUD：报名审批 =====
-
     def add_enrollment(self, enrollment: dict) -> bool:
         self._enrollments.append(enrollment)
         if self._use_bitable:
@@ -506,6 +559,7 @@ class DataProvider:
 
     def approve_enrollment(self, enrollment_id: int, approver: str,
                            status: str = "已通过") -> bool:
+        """审批报名（通过/拒绝）"""
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         for e in self._enrollments:
             if e["id"] == enrollment_id:
@@ -530,7 +584,6 @@ class DataProvider:
         return True
 
     # ===== CRUD：公告管理 =====
-
     def add_announcement(self, announcement: dict) -> bool:
         self._announcements.append(announcement)
         if self._use_bitable:
@@ -568,8 +621,52 @@ class DataProvider:
                 self.client.delete_record("announcements", self.TABLE_NAMES["announcements"], rid)
         return True
 
-    # ===== 学习记录 =====
+    # ===== CRUD：学员管理（含飞书人员字段）=====
+    def add_user(self, user: dict) -> bool:
+        self._users.append(user)
+        if self._use_bitable:
+            fields = {
+                "学员ID": user["id"],
+                "姓名": user["name"],
+                "部门": user.get("department", ""),
+                "岗位": user.get("position", ""),
+                "邮箱": user.get("email", ""),
+                "手机号": user.get("mobile", ""),
+            }
+            # 飞书“人员”字段：通过 open_id 关联通讯录
+            open_id = user.get("feishu_open_id", "")
+            if open_id:
+                fields["人员"] = [{"id": open_id}]
+            self.client.create_record("users", self.TABLE_NAMES["users"], fields)
+        return True
 
+    def update_user(self, user_id: int, updates: dict) -> bool:
+        for u in self._users:
+            if u["id"] == user_id:
+                u.update(updates)
+                break
+        if self._use_bitable:
+            rid = self._record_id_map["users"].get(user_id)
+            if rid:
+                field_map = {"name": "姓名", "department": "部门",
+                             "position": "岗位", "email": "邮箱",
+                             "mobile": "手机号"}
+                fields = {field_map[k]: v for k, v in updates.items() if k in field_map}
+                if "feishu_open_id" in updates and updates["feishu_open_id"]:
+                    fields["人员"] = [{"id": updates["feishu_open_id"]}]
+                if fields:
+                    self.client.update_record("users", self.TABLE_NAMES["users"], rid, fields)
+        return True
+
+    def delete_user(self, user_id: int) -> bool:
+        self._users = [u for u in self._users if u["id"] != user_id]
+        if self._use_bitable:
+            rid = self._record_id_map["users"].pop(user_id, None)
+            if rid:
+                self.client.delete_record("users", self.TABLE_NAMES["users"], rid)
+        return True
+
+    # ===== 学习记录 =====
     def add_interaction(self, user_id: int, course_id: int,
                         progress: float, rating: int,
                         behavior_weight: float) -> bool:
@@ -581,19 +678,29 @@ class DataProvider:
         if self._use_bitable:
             self.client.create_record(
                 "interactions", self.TABLE_NAMES["interactions"],
-                {"学员ID": user_id, "课程ID": course_id,
-                 "学习进度": progress, "评分": rating,
-                 "行为权重": behavior_weight}
+                {
+                    "学员ID": user_id, "课程ID": course_id,
+                    "学习进度": progress, "评分": rating,
+                    "行为权重": behavior_weight
+                }
             )
         return True
 
     # ===== 同步与健康检查 =====
-
     def sync_to_bitable(self) -> dict:
+        """全量同步本地数据到多维表格"""
         if not self._use_bitable:
             return {"success": False, "message": "多维表格未配置，无法同步"}
         sync_log = []
         modules = [
+            ("users", "学员", lambda u: {
+                "学员ID": u["id"], "姓名": u["name"],
+                "部门": u.get("department", ""),
+                "岗位": u.get("position", ""),
+                "邮箱": u.get("email", ""),
+                "手机号": u.get("mobile", ""),
+                "人员": [{"id": u["feishu_open_id"]}] if u.get("feishu_open_id") else [],
+            }),
             ("courses", "课程", lambda c: {
                 "课程ID": c["id"], "课程名称": c["name"],
                 "课程描述": c.get("desc", ""),
@@ -644,6 +751,7 @@ class DataProvider:
         return {"success": True, "log": sync_log, "sync_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
     def health_check(self) -> dict:
+        """健康检查：返回数据源状态"""
         return {
             "data_source": "feishu_bitable" if self._use_bitable else "local_memory",
             "bitable_configured": self.client.is_configured,
